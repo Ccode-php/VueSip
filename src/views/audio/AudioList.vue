@@ -15,23 +15,11 @@ async function loadAudio() {
         const response = await audioService.getAll()
 
         audioFiles.value = response.data || []
-
     } catch (error) {
-        console.error(
-            'Audio yuklashda xatolik:',
-            error
-        )
+        console.error('Audio yuklashda xatolik:', error)
     } finally {
         loading.value = false
     }
-}
-
-function getAudioUrl(path) {
-    if (!path) {
-        return ''
-    }
-
-    return `http://127.0.0.1:8000/storage/${path}`
 }
 
 function formatSize(bytes) {
@@ -46,10 +34,19 @@ function formatSize(bytes) {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
+function formatDuration(seconds) {
+    if (!seconds) {
+        return ''
+    }
+
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+
+    return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
 async function deleteAudio(audio) {
-    const confirmed = confirm(
-        `"${audio.name}" audio faylini o‘chirmoqchimisiz?`
-    )
+    const confirmed = confirm(`"${audio.name}" audio faylini o‘chirmoqchimisiz?`)
 
     if (!confirmed) {
         return
@@ -59,7 +56,6 @@ async function deleteAudio(audio) {
         await audioService.delete(audio.id)
 
         await loadAudio()
-
     } catch (error) {
         console.error(error)
 
@@ -70,22 +66,16 @@ async function deleteAudio(audio) {
     }
 }
 
-onMounted(() => {
-    loadAudio()
-})
+onMounted(loadAudio)
 </script>
 
 <template>
     <div class="page">
-
         <div class="page-header">
-
             <div>
                 <h1>Audio</h1>
 
-                <p>
-                    Ovozli xabar audio fayllari.
-                </p>
+                <p>Ovozli xabar audio fayllari.</p>
             </div>
 
             <button
@@ -95,64 +85,46 @@ onMounted(() => {
             >
                 + Audio qo‘shish
             </button>
-
         </div>
 
-        <div
-            v-if="loading"
-            class="card"
-        >
+        <div v-if="loading" class="card">
             Audio fayllar yuklanmoqda...
         </div>
 
-        <div
-            v-else-if="!audioFiles.length"
-            class="card"
-        >
+        <div v-else-if="!audioFiles.length" class="card">
             Hozircha audio fayllar mavjud emas.
         </div>
 
-        <div
-            v-else
-            class="audio-grid"
-        >
-
+        <div v-else class="audio-grid">
             <div
                 v-for="audio in audioFiles"
                 :key="audio.id"
                 class="card audio-card"
             >
-
                 <div class="audio-info">
-
-                    <div class="audio-icon">
-                        🎵
-                    </div>
+                    <div class="audio-icon">🎵</div>
 
                     <div>
-                        <h3>
-                            {{ audio.name }}
-                        </h3>
+                        <h3>{{ audio.name }}</h3>
 
-                        <p>
-                            {{ audio.original_name }}
-                        </p>
+                        <p>{{ audio.original_name }}</p>
 
                         <small>
                             {{ formatSize(audio.size) }}
+                            <template v-if="audio.duration">
+                                · {{ formatDuration(audio.duration) }}
+                            </template>
                         </small>
                     </div>
-
                 </div>
 
                 <audio
                     controls
-                    preload="metadata"
-                    :src="getAudioUrl(audio.file_path)"
+                    preload="none"
+                    :src="audioService.streamUrl(audio.id)"
                 ></audio>
 
                 <div class="actions">
-
                     <button
                         class="btn btn-danger"
                         type="button"
@@ -160,12 +132,8 @@ onMounted(() => {
                     >
                         🗑️ O‘chirish
                     </button>
-
                 </div>
-
             </div>
-
         </div>
-
     </div>
 </template>

@@ -221,14 +221,6 @@ onMounted(loadTrunks)
 
                                     <button
                                         class="icon-btn"
-                                        title="Asterisk config"
-                                        @click="testConfig(trunk)"
-                                    >
-                                        <Settings :size="17" />
-                                    </button>
-
-                                    <button
-                                        class="icon-btn"
                                         title="Tahrirlash"
                                         @click="editTrunk(trunk.id)"
                                     >

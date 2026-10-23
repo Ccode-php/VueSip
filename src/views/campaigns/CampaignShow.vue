@@ -1,56 +1,257 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-useRoute
+
 import campaignService from '../../services/campaignService'
+import { getEcho, wsState } from '../../services/echo'
+import {
+    STATUS_FILTERS,
+    callStatus,
+    formatDateTime,
+    formatDuration,
+    formatTime,
+} from '../../utils/callStatus'
 
 const route = useRoute()
 const router = useRouter()
 
+const campaignId = computed(() => route.params.id)
+
+const PER_PAGE = 50
+
 const campaign = ref(null)
+const stats = ref(emptyStats())
+
 const loading = ref(true)
 const error = ref('')
 const starting = ref(false)
+const stopping = ref(false)
 
-const campaignId = computed(() => route.params.id)
-let pollerInterval = null
+const rows = ref([])
+const rowsLoading = ref(false)
+const page = ref(1)
+const lastPage = ref(1)
+const totalRows = ref(0)
+const statusFilter = ref('')
 
-// 1. Ma'lumotlarni yuklash va yangilash funksiyasi (Yagona e'lon)
-async function loadCampaign() {
-    // Poller fonda aylanganda ekran o'chib-yonmasligi uchun faqat birinchi marta loading = true bo'ladi
-    if (campaign.value === null) {
+let channelName = null
+let statsTimer = null
+let fallbackTimer = null
+
+function emptyStats() {
+    return {
+        total: 0,
+        pending: 0,
+        ringing: 0,
+        in_call: 0,
+        answered: 0,
+        played: 0,
+        busy: 0,
+        no_answer: 0,
+        failed: 0,
+        finished: 0,
+        percent: 0,
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ma'lumot yuklash                                                    */
+/* ------------------------------------------------------------------ */
+
+async function loadCampaign({ silent = false } = {}) {
+    if (!silent) {
         loading.value = true
     }
+
     error.value = ''
 
     try {
         const response = await campaignService.getOne(campaignId.value)
         const data = response.data
-        campaign.value = data?.data ?? data
 
-        // Agar kampaniya tugasa yoki xato bersa, poller'ni avtomatik to'xtatamiz
-        if (['completed', 'stopped', 'failed'].includes(String(campaign.value?.status).toLowerCase())) {
-            stopPoller()
-        }
+        campaign.value = data
+        stats.value = { ...emptyStats(), ...(data?.stats || {}) }
     } catch (e) {
         console.error(e)
-        error.value = e.response?.data?.message || 'Campaign ma’lumotlarini yuklashda xatolik.'
+
+        if (!silent) {
+            error.value =
+                e.response?.data?.message ||
+                'Campaign ma’lumotlarini yuklashda xatolik.'
+        }
     } finally {
         loading.value = false
     }
 }
 
-// 2. Kampaniyani ishga tushirish (Start) funksiyasi
+// Yengil so'rov: faqat holat va hisoblagichlar
+async function loadStats() {
+    try {
+        const response = await campaignService.getStats(campaignId.value)
+        const data = response.data
+
+        if (campaign.value) {
+            campaign.value.status = data.status
+            campaign.value.started_at = data.started_at
+            campaign.value.finished_at = data.finished_at
+        }
+
+        stats.value = { ...emptyStats(), ...(data?.stats || {}) }
+    } catch (e) {
+        console.error('Hisoblagichlarni yangilashda xatolik:', e)
+    }
+}
+
+async function loadRows({ silent = false } = {}) {
+    if (!silent) {
+        rowsLoading.value = true
+    }
+
+    try {
+        const params = { page: page.value, per_page: PER_PAGE }
+
+        if (statusFilter.value) {
+            params.status = statusFilter.value
+        }
+
+        const response = await campaignService.getRecipients(campaignId.value, params)
+
+        rows.value = Array.isArray(response.data) ? response.data : []
+        lastPage.value = response.last_page || 1
+        totalRows.value = response.total || 0
+
+        // Boshqa foydalanuvchi ma'lumotlarni o'chirgan bo'lsa, oxirgi sahifaga qaytamiz
+        if (page.value > lastPage.value) {
+            page.value = lastPage.value
+        }
+    } catch (e) {
+        console.error('Abonentlarni yuklashda xatolik:', e)
+    } finally {
+        rowsLoading.value = false
+    }
+}
+
+async function refreshAll() {
+    await Promise.all([loadCampaign({ silent: true }), loadRows()])
+}
+
+/* ------------------------------------------------------------------ */
+/* Real-time (Reverb)                                                  */
+/* ------------------------------------------------------------------ */
+
+function subscribe() {
+    try {
+        channelName = `campaign.${campaignId.value}`
+
+        getEcho()
+            .channel(channelName)
+            .listen('.recipient.updated', onRecipientUpdated)
+    } catch (e) {
+        // WebSocket ishlamasa ham sahifa 10 soniyalik yangilanish bilan ishlayveradi
+        console.warn('Real-time ulanish o‘rnatilmadi:', e)
+    }
+}
+
+function unsubscribe() {
+    if (!channelName) {
+        return
+    }
+
+    try {
+        getEcho().leave(channelName)
+    } catch (e) {
+        console.warn(e)
+    }
+
+    channelName = null
+}
+
+function onRecipientUpdated(payload) {
+    const row = rows.value.find((item) => item.id === payload.id)
+
+    if (row) {
+        Object.assign(row, payload)
+    }
+
+    scheduleStats()
+}
+
+// Ko'p hodisa ketma-ket kelsa, hisoblagich so'rovi bitta bo'lib ketadi
+function scheduleStats() {
+    clearTimeout(statsTimer)
+
+    statsTimer = setTimeout(loadStats, 1200)
+}
+
+// Kampaniya ishlayotganda: WebSocket uzilib qolsa ham ma'lumot eskirmasligi uchun
+function startFallback() {
+    if (fallbackTimer) {
+        return
+    }
+
+    fallbackTimer = setInterval(async () => {
+        await loadStats()
+
+        if (wsState.value !== 'connected') {
+            await loadRows({ silent: true })
+        }
+    }, 10000)
+}
+
+function stopFallback() {
+    clearInterval(fallbackTimer)
+    fallbackTimer = null
+}
+
+watch(
+    () => campaign.value?.status,
+    (status, previous) => {
+        if (['running', 'queued'].includes(status)) {
+            startFallback()
+            return
+        }
+
+        stopFallback()
+
+        // Ishlash tugadi yoki to'xtatildi: oxirgi holatni bir marta yangilab olamiz
+        if (previous && ['running', 'queued'].includes(previous)) {
+            loadRows({ silent: true })
+        }
+    }
+)
+
+watch(statusFilter, () => {
+    page.value = 1
+    loadRows()
+})
+
+function goToPage(value) {
+    if (value < 1 || value > lastPage.value || value === page.value) {
+        return
+    }
+
+    page.value = value
+    loadRows()
+}
+
+/* ------------------------------------------------------------------ */
+/* Amallar                                                             */
+/* ------------------------------------------------------------------ */
+
 async function startCampaign() {
-    if (!confirm('Kampaniyani ishga tushirishni xohlaysizmi? Avtomatik qo‘ng‘iroqlar boshlanadi.')) {
+    const text = campaign.value?.status === 'stopped'
+        ? 'Kampaniyani davom ettirasizmi?'
+        : 'Kampaniyani ishga tushirishni xohlaysizmi? Avtomatik qo‘ng‘iroqlar boshlanadi.'
+
+    if (!confirm(text)) {
         return
     }
 
     starting.value = true
+
     try {
         await campaignService.start(campaignId.value)
-        await loadCampaign()
-        startPoller() // Qo'ng'iroq boshlangach jonli yangilashni yoqamiz
+        await refreshAll()
     } catch (e) {
         alert(e.response?.data?.message || 'Kampaniyani boshlashda xatolik yuz berdi.')
     } finally {
@@ -58,34 +259,36 @@ async function startCampaign() {
     }
 }
 
-// 3. Poller (Real-time yangilash) boshqaruvi
-function startPoller() {
-    if (pollerInterval) return
-    pollerInterval = setInterval(() => {
-        loadCampaign()
-    }, 3000) // Har 3 soniyada jonli statusni tekshiradi
-}
+async function stopCampaign() {
+    if (!confirm('Kampaniyani to‘xtatasizmi? Davom etayotgan suhbatlar tugaguncha kutiladi, yangi qo‘ng‘iroq chiqmaydi.')) {
+        return
+    }
 
-function stopPoller() {
-    if (pollerInterval) {
-        clearInterval(pollerInterval)
-        pollerInterval = null
+    stopping.value = true
+
+    try {
+        await campaignService.stop(campaignId.value)
+        await refreshAll()
+    } catch (e) {
+        alert(e.response?.data?.message || 'Kampaniyani to‘xtatishda xatolik yuz berdi.')
+    } finally {
+        stopping.value = false
     }
 }
 
-// Computed propertys va boshqa yordamchi funksiyalar (Siz yozgan variantlar)
-const callResults = computed(() => {
-    const data = campaign.value
-    if (!data) return []
-    if (Array.isArray(data.calls)) return data.calls
-    if (Array.isArray(data.results)) return data.results
-    if (Array.isArray(data.recipients)) return data.recipients
-    if (Array.isArray(data.campaign_recipients)) return data.campaign_recipients
-    return []
-})
+/* ------------------------------------------------------------------ */
+/* Ko'rinish uchun hisoblangan qiymatlar                              */
+/* ------------------------------------------------------------------ */
+
+const canStart = computed(() =>
+    ['draft', 'stopped'].includes(String(campaign.value?.status))
+)
+
+const canStop = computed(() => campaign.value?.status === 'running')
 
 const statusInfo = computed(() => {
     const status = String(campaign.value?.status || '').toLowerCase()
+
     const statuses = {
         draft: { label: 'Qoralama', className: 'campaign-status-draft' },
         queued: { label: 'Navbatda', className: 'campaign-status-pending' },
@@ -94,80 +297,97 @@ const statusInfo = computed(() => {
         failed: { label: 'Xatolik', className: 'campaign-status-failed' },
         stopped: { label: 'To‘xtatilgan', className: 'campaign-status-paused' },
     }
-    return statuses[status] || { label: campaign.value?.status || 'Noma’lum', className: 'campaign-status-default' }
+
+    return statuses[status] || {
+        label: campaign.value?.status || 'Noma’lum',
+        className: 'campaign-status-default',
+    }
 })
 
 const targetInfo = computed(() => {
     const type = campaign.value?.target_type
+
     if (type === 'all') return 'Barcha faol abonentlar'
     if (type === 'groups') return 'Kategoriyalar bo‘yicha'
     if (type === 'individual') return 'Alohida abonentlar'
+
     return type || 'Ko‘rsatilmagan'
 })
 
-const statistics = computed(() => {
-    const results = callResults.value
-    const total = results.length
-    const answered = results.filter(item => ['answered', 'success'].includes(String(item.status).toLowerCase())).length
-    const failed = results.filter(item => ['failed', 'busy', 'no_answer'].includes(String(item.status).toLowerCase())).length
-    const completed = results.filter(item => ['answered', 'failed', 'busy', 'no_answer'].includes(String(item.status).toLowerCase())).length
-    return { total, completed, failed, answered }
+const answeredTotal = computed(() => stats.value.answered + stats.value.in_call)
+const failedTotal = computed(() => stats.value.busy + stats.value.no_answer + stats.value.failed)
+
+const wsInfo = computed(() => {
+    switch (wsState.value) {
+        case 'connected':
+            return { label: 'Jonli', cls: 'cs-live--on' }
+        case 'connecting':
+        case 'initialized':
+            return { label: 'Ulanmoqda...', cls: 'cs-live--wait' }
+        default:
+            return { label: 'Jonli aloqa yo‘q (10 soniyada yangilanadi)', cls: 'cs-live--off' }
+    }
 })
 
-function getRelationName(value) {
+const groupNames = computed(() =>
+    Array.isArray(campaign.value?.groups)
+        ? campaign.value.groups.map((item) => item.name).join(', ')
+        : ''
+)
+
+const subscriberNames = computed(() => {
+    const names = campaign.value?.subscriber_names
+
+    if (!Array.isArray(names) || !names.length) {
+        return ''
+    }
+
+    const extra = (campaign.value.subscribers_count || 0) - names.length
+
+    return names.join(', ') + (extra > 0 ? ` va yana ${extra} ta` : '')
+})
+
+const chips = computed(() => [
+    { label: 'Kutilmoqda', value: stats.value.pending },
+    { label: 'Jiringlamoqda', value: stats.value.ringing },
+    { label: 'Suhbatda', value: stats.value.in_call },
+    { label: 'Javob berdi', value: stats.value.answered },
+    { label: 'To‘liq eshitdi', value: stats.value.played },
+    { label: 'Band', value: stats.value.busy },
+    { label: 'Javob bermadi', value: stats.value.no_answer },
+    { label: 'Xatolik', value: stats.value.failed },
+])
+
+function relationName(value) {
     if (!value) return '—'
     if (typeof value === 'string') return value
+
     return value.name || '—'
 }
 
-function getAudioName(data) { return getRelationName(data?.audio_file || data?.audioFile) }
-function getTrunkName(data) { return getRelationName(data?.sip_trunk || data?.sipTrunk) }
-function getSubscriberName(item) { return item?.name || '—' }
-
-function getPhone(item) { return item?.phone || '—' }
-
-function resultStatus(status) {
-    const value = String(status || '').toLowerCase()
-    const statuses = {
-        answered: { label: 'Javob berdi', className: 'result-status-success' },
-        failed: { label: 'Xatolik', className: 'result-status-failed' },
-        busy: { label: 'Band', className: 'result-status-warning' },
-        no_answer: { label: 'Javob bermadi', className: 'result-status-warning' },
-        pending: { label: 'Kutilmoqda', className: 'result-status-pending' },
-        ringing: { label: 'Chalinmoqda', className: 'result-status-running' },
-    }
-    return statuses[value] || { label: status || 'Noma’lum', className: 'result-status-muted' }
-}
-
-function formatDate(value) {
-    if (!value) return '—'
-    return new Date(value).toLocaleString('uz-UZ', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
-
-function formatDuration(value) {
-    if (!value) return '00:00'
-    const mins = Math.floor(value / 60)
-    const secs = value % 60
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-}
-
-const groupNames = computed(() => formatTargetNames(campaign.value?.groups))
-const subscriberNames = computed(() => formatTargetNames(campaign.value?.subscribers))
-function formatTargetNames(arr) { return Array.isArray(arr) ? arr.map(i => i.name).join(', ') : '' }
+/* ------------------------------------------------------------------ */
 
 onMounted(async () => {
     await loadCampaign()
-    // Agar sahifaga kirganda kampaniya allaqachon ishlab turgan bo'lsa poller avtomatik faollashadi
-    if (['running', 'queued'].includes(String(campaign.value?.status).toLowerCase())) {
-        startPoller()
+
+    if (!campaign.value) {
+        return
+    }
+
+    await loadRows()
+    subscribe()
+
+    if (['running', 'queued'].includes(campaign.value.status)) {
+        startFallback()
     }
 })
 
 onUnmounted(() => {
-    stopPoller() // Sahifadan chiqqanda poller'ni to'xtatish
+    clearTimeout(statsTimer)
+    stopFallback()
+    unsubscribe()
 })
 </script>
-
 
 <template>
     <div class="page campaign-show-page">
@@ -176,24 +396,45 @@ onUnmounted(() => {
                 <div class="eyebrow">QO‘NG‘IROQLAR BOSHQARUVI</div>
                 <h1>Campaign tafsilotlari</h1>
                 <p class="page-description">
-                    Campaign sozlamalari va qo‘ng‘iroqlar natijalarini ko‘ring.
+                    Campaign sozlamalari va qo‘ng‘iroqlar natijalarini real vaqtda kuzating.
                 </p>
             </div>
 
             <div class="campaign-show-header-actions">
-                <button type="button" class="btn btn-secondary" :disabled="loading" @click="loadCampaign">
+                <span class="cs-live" :class="wsInfo.cls">{{ wsInfo.label }}</span>
+
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    :disabled="loading"
+                    @click="refreshAll"
+                >
                     ↻ Yangilash
                 </button>
 
-                <!-- views/campaigns/CampaignShow.vue ichidagi campaign-show-header-actions bo'limiga qo'shing -->
-                <div class="campaign-show-header-actions">
-                    <button v-if="campaign && campaign.status === 'draft'" type="button" class="btn btn-primary"
-                        :disabled="starting" @click="startCampaign">
-                        🚀 Kampaniyani Boshlash
-                    </button>
-                    <!-- ... mavjud Yangilash va Orqaga tugmalari shu yerda qoladi ... -->
-                </div>
+                <button
+                    v-if="canStart"
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="starting"
+                    @click="startCampaign"
+                >
+                    {{
+                        starting
+                            ? 'Ishga tushmoqda...'
+                            : (campaign?.status === 'stopped' ? '▶ Davom ettirish' : '🚀 Kampaniyani boshlash')
+                    }}
+                </button>
 
+                <button
+                    v-if="canStop"
+                    type="button"
+                    class="btn btn-danger"
+                    :disabled="stopping"
+                    @click="stopCampaign"
+                >
+                    {{ stopping ? 'To‘xtatilmoqda...' : '⏹ To‘xtatish' }}
+                </button>
 
                 <button type="button" class="btn btn-secondary" @click="router.push('/campaigns')">
                     ← Ro‘yxatga qaytish
@@ -206,7 +447,7 @@ onUnmounted(() => {
             <div>
                 <strong>Ma’lumotlarni yuklab bo‘lmadi</strong>
                 <p>{{ error }}</p>
-                <button type="button" class="campaign-show-retry" @click="loadCampaign">
+                <button type="button" class="campaign-show-retry" @click="loadCampaign()">
                     Qayta urinish
                 </button>
             </div>
@@ -237,9 +478,9 @@ onUnmounted(() => {
                         </div>
 
                         <p>
-                            ID: {{ campaign.id ?? campaignId }}
+                            ID: {{ campaign.id }}
                             <span class="campaign-meta-separator">•</span>
-                            Yaratilgan: {{ formatDate(campaign.created_at) }}
+                            Yaratilgan: {{ formatDateTime(campaign.created_at) }}
                         </p>
                     </div>
                 </div>
@@ -247,15 +488,33 @@ onUnmounted(() => {
                 <div class="campaign-hero-stats">
                     <div>
                         <span>Qabul qiluvchilar</span>
-                        <strong>{{ statistics.total }}</strong>
+                        <strong>{{ stats.total }}</strong>
                     </div>
                     <div>
                         <span>Javob berganlar</span>
-                        <strong>{{ statistics.answered }}</strong>
+                        <strong>{{ answeredTotal }}</strong>
                     </div>
                     <div>
-                        <span>Xatoliklar</span>
-                        <strong>{{ statistics.failed }}</strong>
+                        <span>Javobsiz / xato</span>
+                        <strong>{{ failedTotal }}</strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card cs-progress-card">
+                <div class="cs-progress-head">
+                    <h2>Bajarilish jarayoni</h2>
+                    <span class="cs-progress-percent">{{ stats.percent }}%</span>
+                </div>
+
+                <div class="cs-progress-bar">
+                    <div class="cs-progress-fill" :style="{ width: stats.percent + '%' }"></div>
+                </div>
+
+                <div class="cs-chips">
+                    <div v-for="chip in chips" :key="chip.label" class="cs-chip">
+                        <strong>{{ chip.value }}</strong>
+                        <span>{{ chip.label }}</span>
                     </div>
                 </div>
             </section>
@@ -275,7 +534,7 @@ onUnmounted(() => {
                     <div>
                         <span>Urinishlar soni</span>
                         <strong>{{ campaign.max_attempts ?? 1 }}</strong>
-                        <small>Har bir abonentga</small>
+                        <small>Har bir raqamga</small>
                     </div>
                 </article>
 
@@ -283,8 +542,8 @@ onUnmounted(() => {
                     <div class="campaign-show-stat-icon stat-icon-green">✓</div>
                     <div>
                         <span>Yakunlangan</span>
-                        <strong>{{ statistics.completed }}</strong>
-                        <small>Qo‘ng‘iroqlar</small>
+                        <strong>{{ stats.finished }}</strong>
+                        <small>{{ stats.total }} tadan</small>
                     </div>
                 </article>
 
@@ -316,12 +575,12 @@ onUnmounted(() => {
 
                         <div class="campaign-detail-row">
                             <span>SIP Trunk</span>
-                            <strong>{{ getTrunkName(campaign) }}</strong>
+                            <strong>{{ relationName(campaign.sip_trunk) }}</strong>
                         </div>
 
                         <div class="campaign-detail-row">
                             <span>Audio fayl</span>
-                            <strong>{{ getAudioName(campaign) }}</strong>
+                            <strong>{{ relationName(campaign.audio_file) }}</strong>
                         </div>
 
                         <div class="campaign-detail-row">
@@ -340,13 +599,18 @@ onUnmounted(() => {
                         </div>
 
                         <div class="campaign-detail-row">
+                            <span>Qayta urinish oralig‘i</span>
+                            <strong>{{ campaign.retry_delay_minutes ?? 10 }} daqiqa</strong>
+                        </div>
+
+                        <div class="campaign-detail-row">
                             <span>Boshlangan vaqt</span>
-                            <strong>{{ formatDate(campaign.started_at) }}</strong>
+                            <strong>{{ formatDateTime(campaign.started_at) }}</strong>
                         </div>
 
                         <div class="campaign-detail-row">
                             <span>Yakunlangan vaqt</span>
-                            <strong>{{ formatDate(campaign.completed_at || campaign.finished_at) }}</strong>
+                            <strong>{{ formatDateTime(campaign.finished_at) }}</strong>
                         </div>
                     </div>
                 </section>
@@ -376,29 +640,26 @@ onUnmounted(() => {
                     <div v-if="campaign.target_type === 'groups'" class="campaign-target-detail">
                         <span>Tanlangan kategoriyalar</span>
                         <p v-if="groupNames">{{ groupNames }}</p>
-                        <p v-else>
-                            Kategoriya nomlari API javobida kelmagan yoki tanlov bo‘sh.
-                        </p>
+                        <p v-else>Kategoriyalar topilmadi.</p>
                     </div>
 
                     <div v-else-if="campaign.target_type === 'individual'" class="campaign-target-detail">
                         <span>Tanlangan abonentlar</span>
                         <p v-if="subscriberNames">{{ subscriberNames }}</p>
-                        <p v-else>
-                            Abonentlar ro‘yxati API javobida kelmagan yoki tanlov bo‘sh.
-                        </p>
+                        <p v-else>Abonentlar topilmadi.</p>
                     </div>
 
                     <div v-else class="campaign-target-detail">
                         <span>Qamrov</span>
-                        <p>Barcha faol abonentlar campaign bajarilayotganda tanlanishi kerak.</p>
+                        <p>Campaign yaratilgan paytdagi barcha faol abonentlar.</p>
                     </div>
 
                     <div class="campaign-target-warning">
                         <span>i</span>
                         <p>
-                            Ko‘rsatilgan abonentlar soni API qaytargan ma’lumotlarga bog‘liq.
-                            Haqiqiy qo‘ng‘iroq natijalari pastdagi jadvalda ko‘rsatiladi.
+                            Abonent ro‘yxati campaign yaratilgan paytda belgilanadi.
+                            Keyin qo‘shilgan abonentlar bu campaignga kirmaydi.
+                            Bitta abonentning har bir telefon raqami alohida qator bo‘ladi.
                         </p>
                     </div>
                 </section>
@@ -410,69 +671,111 @@ onUnmounted(() => {
                         <div class="campaign-panel-icon panel-icon-green">03</div>
                         <div>
                             <h2>Qo‘ng‘iroqlar natijalari</h2>
-                            <p>Abonentlar bo‘yicha holatlar va urinishlar</p>
+                            <p>Holatlar o‘zgarganda jadval o‘zi yangilanadi</p>
                         </div>
                     </div>
 
                     <span class="campaign-results-count">
-                        {{ callResults.length }} ta yozuv
+                        {{ totalRows }} ta yozuv
                     </span>
                 </div>
 
-                <div v-if="callResults.length" class="campaign-results-table-wrap">
+                <div class="cs-toolbar">
+                    <select v-model="statusFilter" class="form-control">
+                        <option
+                            v-for="option in STATUS_FILTERS"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </select>
+                </div>
+
+                <div v-if="rowsLoading && !rows.length" class="campaign-results-empty">
+                    <p>Yuklanmoqda...</p>
+                </div>
+
+                <div v-else-if="rows.length" class="campaign-results-table-wrap">
                     <table class="campaign-results-table">
                         <thead>
                             <tr>
                                 <th>Abonent</th>
                                 <th>Telefon</th>
                                 <th>Holat</th>
-                                <th>Urinishlar</th>
+                                <th>Urinish</th>
                                 <th>Davomiylik</th>
                                 <th>Vaqt</th>
-                                <th>Xabar</th>
+                                <th>Izoh</th>
                             </tr>
                         </thead>
 
                         <tbody>
-                            <tr v-for="(item, index) in callResults" :key="item.id ?? index">
+                            <tr v-for="item in rows" :key="item.id">
                                 <td>
                                     <div class="campaign-result-person">
                                         <span class="campaign-result-avatar">
-                                            {{ getSubscriberName(item).charAt(0).toUpperCase() }}
+                                            {{ (item.name || '?').charAt(0).toUpperCase() }}
                                         </span>
-                                        <strong>{{ getSubscriberName(item) }}</strong>
+                                        <strong>{{ item.name || '—' }}</strong>
                                     </div>
                                 </td>
 
                                 <td class="campaign-result-phone">
-                                    {{ getPhone(item) }}
+                                    {{ item.phone || '—' }}
                                 </td>
 
                                 <td>
-                                    <span class="result-status-badge"
-                                        :class="resultStatus(item.status || item.call_status).className">
-                                        {{ resultStatus(item.status || item.call_status).label }}
+                                    <span class="cs-badge" :class="callStatus(item).cls">
+                                        {{ callStatus(item).label }}
+                                    </span>
+
+                                    <span
+                                        v-if="item.status === 'pending' && item.next_attempt_at"
+                                        class="cs-sub"
+                                    >
+                                        {{ formatTime(item.next_attempt_at) }} dan keyin
                                     </span>
                                 </td>
 
-                                <td>
-                                    {{ item.attempts ?? item.attempt_count ?? item.retry_count ?? '—' }}
-                                </td>
+                                <td>{{ item.attempt }} / {{ item.max_attempts }}</td>
 
-                                <td>
-                                    {{ formatDuration(item.duration ?? item.duration_seconds) }}
-                                </td>
+                                <td>{{ formatDuration(item.duration) }}</td>
 
                                 <td class="campaign-result-date">
-                                    {{ formatDate(item.started_at || item.called_at || item.created_at) }}
+                                    {{ formatDateTime(item.started_at) }}
                                 </td>
 
-                                <td class="campaign-result-message">
-                                    {{ item.error_message || item.message || item.hangup_cause || '—' }}
+                                <td class="cs-message">
+                                    {{ item.error_message || item.sip_reason || '—' }}
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+
+                    <div class="cs-pager">
+                        <span>{{ page }} / {{ lastPage }}-sahifa</span>
+
+                        <div class="cs-pager-buttons">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                :disabled="page <= 1"
+                                @click="goToPage(page - 1)"
+                            >
+                                ← Oldingi
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                :disabled="page >= lastPage"
+                                @click="goToPage(page + 1)"
+                            >
+                                Keyingi →
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div v-else class="campaign-results-empty">
@@ -482,11 +785,9 @@ onUnmounted(() => {
                             <path d="M3 6h.01M3 12h.01M3 18h.01" />
                         </svg>
                     </div>
-                    <h3>Hozircha qo‘ng‘iroq natijalari yo‘q</h3>
-                    <p>
-                        Campaign hali ishga tushmagan bo‘lishi mumkin yoki natijalar API orqali
-                        ushbu sahifaga qaytarilmayapti.
-                    </p>
+                    <h3>Yozuvlar topilmadi</h3>
+                    <p v-if="statusFilter">Tanlangan holat bo‘yicha yozuv yo‘q.</p>
+                    <p v-else>Bu campaignda hali abonentlar yo‘q.</p>
                 </div>
             </section>
 
