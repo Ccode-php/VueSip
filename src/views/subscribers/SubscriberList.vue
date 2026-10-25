@@ -475,6 +475,68 @@ async function startImport() {
         importing.value = false
     }
 }
+
+
+// Excel eksport: import fayli bilan bir xil ustunlar (qayta import qilsa bo'ladi)
+function exportSubscribers() {
+    const list = subscribers.value || []
+
+    if (!list.length) {
+        window.alert('Eksport qilish uchun abonent yo‘q.')
+        return
+    }
+
+    const cmp = (a, b) => String(a).localeCompare(String(b), 'uz')
+
+    // Kategoriya bo'yicha, keyin ism bo'yicha tartiblanadi
+    const rows = [...list]
+        .sort((a, b) =>
+            cmp(a.group?.name || '', b.group?.name || '') || cmp(a.name, b.name)
+        )
+        .map((s) => ({
+            Ism: s.name,
+            Telefon: (s.phones || []).map((p) => p.phone).join(';'),
+            Kategoriya: s.group?.name || '',
+            Turi: s.type,
+        }))
+
+    const workbook = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Barchasi')
+
+    // Hamma bo'limlar tanlangan bo'lsa: har bir kategoriya uchun alohida varaq ham qo'shiladi
+    if (!selectedGroup.value) {
+        const byCategory = new Map()
+
+        for (const row of rows) {
+            const key = row.Kategoriya || 'Kategoriyasiz'
+
+            if (!byCategory.has(key)) byCategory.set(key, [])
+            byCategory.get(key).push(row)
+        }
+
+        const used = new Set(['barchasi'])
+
+        for (const [name, items] of byCategory) {
+            // Excel varaq nomi: 31 belgigacha, \ / ? * [ ] : bo'lmaydi, takrorlanmaydi
+            const base = name.replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 28) || 'Kategoriya'
+            let title = base
+            let n = 2
+
+            while (used.has(title.toLowerCase())) {
+                title = `${base} ${n++}`
+            }
+
+            used.add(title.toLowerCase())
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(items), title)
+        }
+    }
+
+    XLSX.writeFile(
+        workbook,
+        `Abonentlar_${new Date().toISOString().slice(0, 10)}.xlsx`
+    )
+}
 </script>
 
 <template>
@@ -502,13 +564,11 @@ async function startImport() {
                     📥 Excel import
                 </button>
 
-                <input
-                    ref="importFile"
-                    type="file"
-                    accept=".xlsx,.xls"
-                    hidden
-                    @change="handleExcelImport"
-                />
+                <button class="btn btn-secondary" type="button" @click="exportSubscribers">
+                    📤 Excel eksport
+                </button>
+
+                <input ref="importFile" type="file" accept=".xlsx,.xls" hidden @change="handleExcelImport" />
             </div>
         </div>
 
@@ -516,26 +576,13 @@ async function startImport() {
             <div class="filter-row">
                 <div class="search-box">
                     <Search :size="18" />
-                    <input
-                        v-model="search"
-                        type="text"
-                        placeholder="Ism yoki telefon bo‘yicha qidirish..."
-                        class="form-control"
-                        @keyup.enter="loadSubscribers"
-                    />
+                    <input v-model="search" type="text" placeholder="Ism yoki telefon bo‘yicha qidirish..."
+                        class="form-control" @keyup.enter="loadSubscribers" />
                 </div>
 
-                <select
-                    v-model="selectedGroup"
-                    class="form-control group-filter"
-                    @change="loadSubscribers"
-                >
+                <select v-model="selectedGroup" class="form-control group-filter" @change="loadSubscribers">
                     <option value="">Barcha bo‘limlar</option>
-                    <option
-                        v-for="group in displayGroups"
-                        :key="group.id"
-                        :value="group.id"
-                    >
+                    <option v-for="group in displayGroups" :key="group.id" :value="group.id">
                         {{ '　'.repeat(group.depth || 0) }}{{ group.depth ? '↳ ' : '' }}{{ getGroupLabel(group) }}
                         ({{ group.subscribers_count || 0 }})
                     </option>
@@ -546,12 +593,7 @@ async function startImport() {
                     Qidirish
                 </button>
 
-                <button
-                    class="btn btn-secondary"
-                    type="button"
-                    title="Yangilash"
-                    @click="refresh"
-                >
+                <button class="btn btn-secondary" type="button" title="Yangilash" @click="refresh">
                     <RefreshCw :size="17" />
                 </button>
             </div>
@@ -574,16 +616,10 @@ async function startImport() {
             </div>
 
             <div v-if="displayGroups.length" class="groups-grid">
-                <div
-                    v-for="group in displayGroups"
-                    :key="group.id"
-                    class="group-card"
-                    :class="{
-                        'group-disabled': !group.enabled,
-                        'group-child': group.depth > 0
-                    }"
-                    :style="{ marginLeft: `${Math.min(group.depth || 0, 5) * 12}px` }"
-                >
+                <div v-for="group in displayGroups" :key="group.id" class="group-card" :class="{
+                    'group-disabled': !group.enabled,
+                    'group-child': group.depth > 0
+                }" :style="{ marginLeft: `${Math.min(group.depth || 0, 5) * 12}px` }">
                     <div class="group-card-icon">
                         <Users :size="22" />
                     </div>
@@ -606,21 +642,11 @@ async function startImport() {
                     </div>
 
                     <div class="group-card-actions">
-                        <button
-                            class="icon-btn"
-                            title="Tahrirlash"
-                            type="button"
-                            @click="openEditGroup(group)"
-                        >
+                        <button class="icon-btn" title="Tahrirlash" type="button" @click="openEditGroup(group)">
                             <Pencil :size="16" />
                         </button>
 
-                        <button
-                            class="icon-btn danger"
-                            title="O‘chirish"
-                            type="button"
-                            @click="deleteGroup(group)"
-                        >
+                        <button class="icon-btn danger" title="O‘chirish" type="button" @click="deleteGroup(group)">
                             <Trash2 :size="16" />
                         </button>
                     </div>
@@ -689,21 +715,12 @@ async function startImport() {
                             </td>
 
                             <td>
-                                <div
-                                    v-if="getSubscriberPhones(subscriber).length"
-                                    class="subscriber-phone-list"
-                                >
-                                    <div
-                                        v-for="phone in getSubscriberPhones(subscriber)"
-                                        :key="phone.id ?? phone.phone"
-                                        class="subscriber-phone-item"
-                                    >
-                                        <span
-                                            class="subscriber-phone-number"
-                                            :class="{
-                                                'subscriber-phone-primary': phone.is_primary
-                                            }"
-                                        >
+                                <div v-if="getSubscriberPhones(subscriber).length" class="subscriber-phone-list">
+                                    <div v-for="phone in getSubscriberPhones(subscriber)" :key="phone.id ?? phone.phone"
+                                        class="subscriber-phone-item">
+                                        <span class="subscriber-phone-number" :class="{
+                                            'subscriber-phone-primary': phone.is_primary
+                                        }">
                                             {{ phone.phone }}
                                         </span>
 
@@ -711,10 +728,7 @@ async function startImport() {
                                             {{ phone.is_primary ? 'Asosiy' : (phone.label || 'Qo‘shimcha') }}
                                         </span>
 
-                                        <span
-                                            v-if="phone.enabled === false"
-                                            class="subscriber-phone-disabled"
-                                        >
+                                        <span v-if="phone.enabled === false" class="subscriber-phone-disabled">
                                             Nofaol
                                         </span>
                                     </div>
@@ -726,10 +740,8 @@ async function startImport() {
                             </td>
 
                             <td>
-                                <span
-                                    class="badge"
-                                    :class="subscriber.type === 'student' ? 'badge-blue' : 'badge-purple'"
-                                >
+                                <span class="badge"
+                                    :class="subscriber.type === 'student' ? 'badge-blue' : 'badge-purple'">
                                     {{ subscriber.type === 'student' ? 'Talaba' : 'Xodim' }}
                                 </span>
                             </td>
@@ -737,31 +749,21 @@ async function startImport() {
                             <td>{{ getGroupLabel(subscriber.group) }}</td>
 
                             <td>
-                                <span
-                                    class="status-badge"
-                                    :class="subscriber.enabled ? 'status-success' : 'status-disabled'"
-                                >
+                                <span class="status-badge"
+                                    :class="subscriber.enabled ? 'status-success' : 'status-disabled'">
                                     {{ subscriber.enabled ? 'Faol' : 'Nofaol' }}
                                 </span>
                             </td>
 
                             <td>
                                 <div class="table-actions">
-                                    <button
-                                        class="icon-btn"
-                                        title="Tahrirlash"
-                                        type="button"
-                                        @click="editSubscriber(subscriber.id)"
-                                    >
+                                    <button class="icon-btn" title="Tahrirlash" type="button"
+                                        @click="editSubscriber(subscriber.id)">
                                         <Pencil :size="17" />
                                     </button>
 
-                                    <button
-                                        class="icon-btn danger"
-                                        title="O‘chirish"
-                                        type="button"
-                                        @click="deleteSubscriber(subscriber)"
-                                    >
+                                    <button class="icon-btn danger" title="O‘chirish" type="button"
+                                        @click="deleteSubscriber(subscriber)">
                                         <Trash2 :size="17" />
                                     </button>
                                 </div>
@@ -773,23 +775,14 @@ async function startImport() {
         </div>
 
         <!-- Kategoriya yaratish/tahrirlash oynasi -->
-        <div
-            v-if="showGroupModal"
-            class="modal-overlay"
-            @click.self="closeGroupModal"
-        >
+        <div v-if="showGroupModal" class="modal-overlay" @click.self="closeGroupModal">
             <div class="modal">
                 <div class="modal-header">
                     <h2>
                         {{ editingGroupId ? 'Kategoriyani tahrirlash' : 'Yangi kategoriya' }}
                     </h2>
 
-                    <button
-                        class="icon-btn"
-                        type="button"
-                        :disabled="groupSaving"
-                        @click="closeGroupModal"
-                    >
+                    <button class="icon-btn" type="button" :disabled="groupSaving" @click="closeGroupModal">
                         <X :size="20" />
                     </button>
                 </div>
@@ -801,48 +794,29 @@ async function startImport() {
                 <form @submit.prevent="saveGroup">
                     <div class="form-group">
                         <label for="group-name">Kategoriya nomi</label>
-                        <input
-                            id="group-name"
-                            v-model="groupForm.name"
-                            class="form-control"
-                            type="text"
-                            placeholder="Masalan: Talabalar yoki 1-kurs"
-                            maxlength="255"
-                            required
-                        />
+                        <input id="group-name" v-model="groupForm.name" class="form-control" type="text"
+                            placeholder="Masalan: Talabalar yoki 1-kurs" maxlength="255" required />
                     </div>
 
                     <div class="form-group">
                         <label for="group-parent">Ota kategoriya</label>
-                        <select
-                            id="group-parent"
-                            v-model="groupForm.parent_id"
-                            class="form-control"
-                        >
+                        <select id="group-parent" v-model="groupForm.parent_id" class="form-control">
                             <option :value="null">Asosiy kategoriya</option>
-                            <option
-                                v-for="parent in parentGroups"
-                                :key="parent.id"
-                                :value="parent.id"
-                            >
+                            <option v-for="parent in parentGroups" :key="parent.id" :value="parent.id">
                                 {{ getGroupLabel(parent) }}
                             </option>
                         </select>
                         <small class="field-hint">
                             “Asosiy kategoriya” tanlansa, kategoriya yuqori darajada turadi.
-                            Boshqa kategoriya tanlansa, uning ichki kategoriyasi bo‘ladi. Istalgan darajani tanlash mumkin.
+                            Boshqa kategoriya tanlansa, uning ichki kategoriyasi bo‘ladi. Istalgan darajani tanlash
+                            mumkin.
                         </small>
                     </div>
 
                     <div class="form-group">
                         <label for="group-description">Tavsif</label>
-                        <textarea
-                            id="group-description"
-                            v-model="groupForm.description"
-                            class="form-control"
-                            rows="3"
-                            placeholder="Kategoriya haqida..."
-                        ></textarea>
+                        <textarea id="group-description" v-model="groupForm.description" class="form-control" rows="3"
+                            placeholder="Kategoriya haqida..."></textarea>
                     </div>
 
                     <div class="form-checkbox">
@@ -851,12 +825,8 @@ async function startImport() {
                     </div>
 
                     <div class="modal-footer">
-                        <button
-                            class="btn btn-secondary"
-                            type="button"
-                            :disabled="groupSaving"
-                            @click="closeGroupModal"
-                        >
+                        <button class="btn btn-secondary" type="button" :disabled="groupSaving"
+                            @click="closeGroupModal">
                             Bekor qilish
                         </button>
 
@@ -909,12 +879,7 @@ async function startImport() {
             </div>
 
             <div class="actions">
-                <button
-                    class="btn btn-primary"
-                    type="button"
-                    :disabled="importing"
-                    @click="startImport"
-                >
+                <button class="btn btn-primary" type="button" :disabled="importing" @click="startImport">
                     {{ importing ? 'Import qilinmoqda...' : 'Import qilish' }}
                 </button>
 
@@ -958,10 +923,7 @@ async function startImport() {
             <div v-if="importResult.errors.length" class="import-errors">
                 <h4>Xatoliklar</h4>
                 <ul>
-                    <li
-                        v-for="(item, index) in importResult.errors"
-                        :key="item.row ?? index"
-                    >
+                    <li v-for="(item, index) in importResult.errors" :key="item.row ?? index">
                         {{ item.row ? `${item.row}-qator: ` : '' }}{{ item.message || item }}
                     </li>
                 </ul>
@@ -1316,7 +1278,7 @@ async function startImport() {
     margin: 18px 0;
 }
 
-.import-result > div {
+.import-result>div {
     display: flex;
     flex-direction: column;
     gap: 4px;

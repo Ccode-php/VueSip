@@ -1,6 +1,6 @@
 <!-- views/calls/CallResults.vue -->
 <script setup>
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch, computed } from 'vue'
 import * as XLSX from 'xlsx'
 
 import campaignService from '../../services/campaignService'
@@ -10,11 +10,13 @@ import {
     callStatus,
     formatDateTime,
     formatDuration,
+    groupRecipients,
 } from '../../utils/callStatus'
 
 const PER_PAGE = 50
 
 const items = ref([])
+const groupedItems = computed(() => groupRecipients(items.value))
 const campaigns = ref([])
 
 const loading = ref(false)
@@ -130,6 +132,7 @@ async function exportToExcel() {
             '#': index + 1,
             'Kampaniya': item.campaign?.name || '',
             'Abonent': item.name,
+            'Kategoriya': item.group_name || '',
             'Telefon raqami': item.phone,
             'Holat': callStatus(item).label,
             'Urinish': `${item.attempt} / ${item.max_attempts}`,
@@ -176,42 +179,25 @@ onUnmounted(() => {
                 </p>
             </div>
 
-            <button
-                class="btn btn-primary"
-                type="button"
-                :disabled="exporting || !total"
-                @click="exportToExcel"
-            >
+            <button class="btn btn-primary" type="button" :disabled="exporting || !total" @click="exportToExcel">
                 {{ exporting ? 'Tayyorlanmoqda...' : '📥 Excelga yuklash (.xlsx)' }}
             </button>
         </div>
 
         <div class="card">
             <div class="cs-toolbar">
-                <input
-                    v-model="filters.search"
-                    type="text"
-                    placeholder="Abonent ismi yoki telefon bo‘yicha qidirish..."
-                    class="form-control cs-grow"
-                />
+                <input v-model="filters.search" type="text" placeholder="Abonent ismi yoki telefon bo‘yicha qidirish..."
+                    class="form-control cs-grow" />
 
                 <select v-model="filters.campaign_id" class="form-control">
                     <option value="">Barcha kampaniyalar</option>
-                    <option
-                        v-for="campaign in campaigns"
-                        :key="campaign.id"
-                        :value="campaign.id"
-                    >
+                    <option v-for="campaign in campaigns" :key="campaign.id" :value="campaign.id">
                         {{ campaign.name }}
                     </option>
                 </select>
 
                 <select v-model="filters.status" class="form-control">
-                    <option
-                        v-for="option in STATUS_FILTERS"
-                        :key="option.value"
-                        :value="option.value"
-                    >
+                    <option v-for="option in STATUS_FILTERS" :key="option.value" :value="option.value">
                         {{ option.label }}
                     </option>
                 </select>
@@ -231,6 +217,7 @@ onUnmounted(() => {
                         <tr>
                             <th>Kampaniya</th>
                             <th>Abonent</th>
+                            <th>Kategoriya</th>
                             <th>Telefon</th>
                             <th>Holat</th>
                             <th>Urinish</th>
@@ -240,26 +227,34 @@ onUnmounted(() => {
                     </thead>
 
                     <tbody>
-                        <tr v-for="item in items" :key="item.id">
-                            <td>{{ item.campaign?.name || '—' }}</td>
-
+                        <tr v-for="g in groupedItems" :key="g.key">
+                            <td>{{ g.campaign?.name || '—' }}</td>
+                            <td><strong>{{ g.name }}</strong></td>
+                            <td>{{ g.group_name || '—' }}</td>
+                            <td>{{ g.phones }}</td>
                             <td>
-                                <strong>{{ item.name }}</strong>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                    <span v-if="g.items.length > 1" class="cs-phone-tag">{{ item.phone }}</span>
+                                    <span class="cs-badge" :class="callStatus(item).cls">
+                                        {{ callStatus(item).label }}
+                                    </span>
+                                </div>
                             </td>
-
-                            <td>{{ item.phone }}</td>
-
                             <td>
-                                <span class="cs-badge" :class="callStatus(item).cls">
-                                    {{ callStatus(item).label }}
-                                </span>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                    {{ item.attempt }} / {{ item.max_attempts }}
+                                </div>
                             </td>
-
-                            <td>{{ item.attempt }} / {{ item.max_attempts }}</td>
-
-                            <td>{{ formatDuration(item.duration) }}</td>
-
-                            <td>{{ formatDateTime(item.started_at) }}</td>
+                            <td>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                    {{ formatDuration(item.duration) }}
+                                </div>
+                            </td>
+                            <td>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                    {{ formatDateTime(item.started_at) }}
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -271,21 +266,13 @@ onUnmounted(() => {
                 </span>
 
                 <div class="cs-pager-buttons">
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        :disabled="page <= 1 || loading"
-                        @click="goToPage(page - 1)"
-                    >
+                    <button type="button" class="btn btn-secondary" :disabled="page <= 1 || loading"
+                        @click="goToPage(page - 1)">
                         ← Oldingi
                     </button>
 
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        :disabled="page >= lastPage || loading"
-                        @click="goToPage(page + 1)"
-                    >
+                    <button type="button" class="btn btn-secondary" :disabled="page >= lastPage || loading"
+                        @click="goToPage(page + 1)">
                         Keyingi →
                     </button>
                 </div>

@@ -8,6 +8,7 @@ export const STATUS_FILTERS = [
     { value: 'busy', label: 'Band' },
     { value: 'no_answer', label: 'Javob bermadi' },
     { value: 'failed', label: 'Xatolik' },
+    { value: 'skipped', label: 'O‘tkazib yuborildi' },
 ]
 
 /**
@@ -42,6 +43,9 @@ export function callStatus(item) {
 
         case 'no_answer':
             return { label: 'Javob bermadi', cls: 'cs-badge--warn' }
+
+        case 'skipped':
+            return { label: 'Kerak bo‘lmadi', cls: 'cs-badge--muted' }
 
         case 'failed':
             return { label: 'Xatolik', cls: 'cs-badge--bad' }
@@ -97,4 +101,40 @@ export function formatTime(value) {
     const pad = (n) => String(n).padStart(2, '0')
 
     return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * Bitta abonentning raqamlarini (har biri alohida yozuv) bitta qatorga yig'adi.
+ * Guruhlash kaliti: kampaniya + abonent.
+ */
+export function groupRecipients(items) {
+    const map = new Map()
+
+    for (const item of items) {
+        const key = item.subscriber_id
+            ? `${item.campaign_id}:${item.subscriber_id}`
+            : `r${item.id}`
+
+        if (!map.has(key)) {
+            map.set(key, {
+                key,
+                name: item.name,
+                group_name: item.group_name,
+                campaign: item.campaign,
+                items: [],
+            })
+        }
+
+        map.get(key).items.push(item)
+    }
+
+    return [...map.values()].map((g) => {
+        const sorted = [...g.items].sort((a, b) => a.id - b.id)
+
+        return {
+            ...g,
+            items: sorted,
+            phones: sorted.map((i) => i.phone).join(';'),
+        }
+    })
 }

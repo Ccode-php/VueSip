@@ -10,6 +10,7 @@ import {
     formatDateTime,
     formatDuration,
     formatTime,
+    groupRecipients,
 } from '../../utils/callStatus'
 
 const route = useRoute()
@@ -28,6 +29,7 @@ const starting = ref(false)
 const stopping = ref(false)
 
 const rows = ref([])
+const groupedRows = computed(() => groupRecipients(rows.value))
 const rowsLoading = ref(false)
 const page = ref(1)
 const lastPage = ref(1)
@@ -403,22 +405,12 @@ onUnmounted(() => {
             <div class="campaign-show-header-actions">
                 <span class="cs-live" :class="wsInfo.cls">{{ wsInfo.label }}</span>
 
-                <button
-                    type="button"
-                    class="btn btn-secondary"
-                    :disabled="loading"
-                    @click="refreshAll"
-                >
+                <button type="button" class="btn btn-secondary" :disabled="loading" @click="refreshAll">
                     ↻ Yangilash
                 </button>
 
-                <button
-                    v-if="canStart"
-                    type="button"
-                    class="btn btn-primary"
-                    :disabled="starting"
-                    @click="startCampaign"
-                >
+                <button v-if="canStart" type="button" class="btn btn-primary" :disabled="starting"
+                    @click="startCampaign">
                     {{
                         starting
                             ? 'Ishga tushmoqda...'
@@ -426,13 +418,7 @@ onUnmounted(() => {
                     }}
                 </button>
 
-                <button
-                    v-if="canStop"
-                    type="button"
-                    class="btn btn-danger"
-                    :disabled="stopping"
-                    @click="stopCampaign"
-                >
+                <button v-if="canStop" type="button" class="btn btn-danger" :disabled="stopping" @click="stopCampaign">
                     {{ stopping ? 'To‘xtatilmoqda...' : '⏹ To‘xtatish' }}
                 </button>
 
@@ -682,11 +668,7 @@ onUnmounted(() => {
 
                 <div class="cs-toolbar">
                     <select v-model="statusFilter" class="form-control">
-                        <option
-                            v-for="option in STATUS_FILTERS"
-                            :key="option.value"
-                            :value="option.value"
-                        >
+                        <option v-for="option in STATUS_FILTERS" :key="option.value" :value="option.value">
                             {{ option.label }}
                         </option>
                     </select>
@@ -701,6 +683,7 @@ onUnmounted(() => {
                         <thead>
                             <tr>
                                 <th>Abonent</th>
+                                <th>Kategoriya</th>
                                 <th>Telefon</th>
                                 <th>Holat</th>
                                 <th>Urinish</th>
@@ -711,43 +694,55 @@ onUnmounted(() => {
                         </thead>
 
                         <tbody>
-                            <tr v-for="item in rows" :key="item.id">
+                            <tr v-for="g in groupedRows" :key="g.key">
                                 <td>
                                     <div class="campaign-result-person">
                                         <span class="campaign-result-avatar">
-                                            {{ (item.name || '?').charAt(0).toUpperCase() }}
+                                            {{ (g.name || '?').charAt(0).toUpperCase() }}
                                         </span>
-                                        <strong>{{ item.name || '—' }}</strong>
+                                        <strong>{{ g.name || '—' }}</strong>
                                     </div>
                                 </td>
 
-                                <td class="campaign-result-phone">
-                                    {{ item.phone || '—' }}
+                                <td>{{ g.group_name || '—' }}</td>
+
+                                <td class="campaign-result-phone">{{ g.phones || '—' }}</td>
+
+                                <td>
+                                    <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                        <span v-if="g.items.length > 1" class="cs-phone-tag">{{ item.phone }}</span>
+                                        <span class="cs-badge" :class="callStatus(item).cls">
+                                            {{ callStatus(item).label }}
+                                        </span>
+                                        <span v-if="item.status === 'pending' && item.next_attempt_at"
+                                            class="cs-phone-tag">
+                                            {{ formatTime(item.next_attempt_at) }} dan keyin
+                                        </span>
+                                    </div>
                                 </td>
 
                                 <td>
-                                    <span class="cs-badge" :class="callStatus(item).cls">
-                                        {{ callStatus(item).label }}
-                                    </span>
-
-                                    <span
-                                        v-if="item.status === 'pending' && item.next_attempt_at"
-                                        class="cs-sub"
-                                    >
-                                        {{ formatTime(item.next_attempt_at) }} dan keyin
-                                    </span>
+                                    <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                        {{ item.attempt }} / {{ item.max_attempts }}
+                                    </div>
                                 </td>
 
-                                <td>{{ item.attempt }} / {{ item.max_attempts }}</td>
-
-                                <td>{{ formatDuration(item.duration) }}</td>
+                                <td>
+                                    <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                        {{ formatDuration(item.duration) }}
+                                    </div>
+                                </td>
 
                                 <td class="campaign-result-date">
-                                    {{ formatDateTime(item.started_at) }}
+                                    <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                        {{ formatDateTime(item.started_at) }}
+                                    </div>
                                 </td>
 
                                 <td class="cs-message">
-                                    {{ item.error_message || item.sip_reason || '—' }}
+                                    <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                        {{ item.error_message || item.sip_reason || '—' }}
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
@@ -757,21 +752,13 @@ onUnmounted(() => {
                         <span>{{ page }} / {{ lastPage }}-sahifa</span>
 
                         <div class="cs-pager-buttons">
-                            <button
-                                type="button"
-                                class="btn btn-secondary"
-                                :disabled="page <= 1"
-                                @click="goToPage(page - 1)"
-                            >
+                            <button type="button" class="btn btn-secondary" :disabled="page <= 1"
+                                @click="goToPage(page - 1)">
                                 ← Oldingi
                             </button>
 
-                            <button
-                                type="button"
-                                class="btn btn-secondary"
-                                :disabled="page >= lastPage"
-                                @click="goToPage(page + 1)"
-                            >
+                            <button type="button" class="btn btn-secondary" :disabled="page >= lastPage"
+                                @click="goToPage(page + 1)">
                                 Keyingi →
                             </button>
                         </div>

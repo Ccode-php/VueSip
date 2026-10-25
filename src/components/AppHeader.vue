@@ -2,12 +2,12 @@
     <header class="header">
 
         <div>
-            <strong>Voice Notification System</strong>
+            <strong>Avtomatik ovozli Xabar jo'natish tizimi</strong>
         </div>
 
         <div class="system-status">
             <span class="status-dot"></span>
-            System Online
+            Tizim Online
         </div>
 
     </header>

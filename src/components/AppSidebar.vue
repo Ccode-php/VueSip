@@ -14,7 +14,7 @@ import {
 
         <div class="logo">
             <PhoneCall :size="25" />
-            <span>Voice System</span>
+            <span>BILDIRISHNOMA TIZIMI</span>
         </div>
 
         <nav>
