@@ -194,7 +194,7 @@ async function save() {
     }
 
     const invalidPhone = validPhones.find(
-        phone => !/^\+?\d{7,15}$/.test(phone.phone)
+        phone => !/^\+?\d{3,15}$/.test(phone.phone)
     )
 
     if (invalidPhone) {
