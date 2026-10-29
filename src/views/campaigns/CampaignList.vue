@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Eye, Trash2 } from 'lucide-vue-next'
 import campaignService from '../../services/campaignService'
 
 const router = useRouter()
@@ -116,12 +117,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="page">
+    <div class="page campaigns-page">
         <div class="page-header">
             <div>
                 <h1>Campaignlar</h1>
 
-                <p>Ovozli xabar yuborish campaignlari.</p>
+                <p class="page-description">Ovozli xabar yuborish campaignlari.</p>
             </div>
 
             <button
@@ -141,19 +142,28 @@ onUnmounted(() => {
             Hozircha campaignlar mavjud emas.
         </div>
 
-        <div v-else class="campaign-list">
+        <div v-else class="cl-list">
+            <div class="cl-row cl-head">
+                <div>Campaign</div>
+                <div>Holat</div>
+                <div>Jarayon</div>
+                <div>Trunk / Audio</div>
+                <div class="cl-num">Raqam</div>
+                <div class="cl-actions"></div>
+            </div>
+
             <div
                 v-for="campaign in campaigns"
                 :key="campaign.id"
-                class="card campaign-card"
+                class="card cl-row cl-item"
+                @click="router.push(`/campaigns/${campaign.id}`)"
             >
-                <div class="campaign-card-header">
-                    <div>
-                        <h3>{{ campaign.name }}</h3>
+                <div class="cl-main">
+                    <strong class="cl-name">{{ campaign.name }}</strong>
+                    <span class="cl-sub">{{ targetText(campaign) }}</span>
+                </div>
 
-                        <p>{{ targetText(campaign) }}</p>
-                    </div>
-
+                <div>
                     <span
                         class="campaign-status"
                         :class="`status-${campaign.status}`"
@@ -162,59 +172,49 @@ onUnmounted(() => {
                     </span>
                 </div>
 
-                <div class="campaign-details">
-                    <div>
-                        <span>SIP Trunk</span>
+                <div class="cl-progress">
+                    <template v-if="campaign.recipients_count">
+                        <div class="cs-mini-progress">
+                            <div :style="{ width: progress(campaign) + '%' }"></div>
+                        </div>
 
-                        <strong>{{ campaign.sip_trunk?.name || '—' }}</strong>
-                    </div>
+                        <span class="cl-sub">
+                            {{ campaign.finished_count || 0 }} / {{ campaign.recipients_count }}
+                            ({{ progress(campaign) }}%)
+                        </span>
+                    </template>
 
-                    <div>
-                        <span>Audio</span>
-
-                        <strong>{{ campaign.audio_file?.name || '—' }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Raqamlar</span>
-
-                        <strong>{{ campaign.recipients_count || 0 }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Concurrent</span>
-
-                        <strong>{{ campaign.max_concurrent_calls }}</strong>
-                    </div>
+                    <span v-else class="cl-sub">—</span>
                 </div>
 
-                <div v-if="campaign.recipients_count">
-                    <div class="cs-mini-progress">
-                        <div :style="{ width: progress(campaign) + '%' }"></div>
-                    </div>
-
-                    <small class="cs-sub">
-                        {{ campaign.finished_count || 0 }} / {{ campaign.recipients_count }}
-                        yakunlangan ({{ progress(campaign) }}%)
-                    </small>
+                <div class="cl-main">
+                    <span class="cl-name">{{ campaign.sip_trunk?.name || '—' }}</span>
+                    <span class="cl-sub">{{ campaign.audio_file?.name || '—' }}</span>
                 </div>
 
-                <div class="actions">
+                <div class="cl-num">
+                    <strong>{{ campaign.recipients_count || 0 }}</strong>
+                    <span class="cl-sub">bir vaqtda {{ campaign.max_concurrent_calls }}</span>
+                </div>
+
+                <div class="cl-actions" @click.stop>
                     <button
-                        class="btn"
+                        class="cl-icon-btn"
                         type="button"
+                        title="Ko‘rish"
                         @click="router.push(`/campaigns/${campaign.id}`)"
                     >
-                        Ko‘rish
+                        <Eye :size="16" />
                     </button>
 
                     <button
                         v-if="campaign.status !== 'running'"
-                        class="btn btn-danger"
+                        class="cl-icon-btn cl-danger"
                         type="button"
+                        title="O‘chirish"
                         @click="deleteCampaign(campaign)"
                     >
-                        🗑️ O‘chirish
+                        <Trash2 :size="16" />
                     </button>
                 </div>
             </div>

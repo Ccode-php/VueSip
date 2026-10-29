@@ -9,6 +9,7 @@ import {
     Users,
     FolderPlus,
     RefreshCw,
+    ChevronDown,
     X,
 } from 'lucide-vue-next'
 import * as XLSX from 'xlsx'
@@ -34,10 +35,32 @@ const editingGroupId = ref(null)
 
 const groupForm = ref({
     name: '',
-    description: '',
     enabled: true,
     parent_id: null,
 })
+
+// "Kategoriyalar" kartasi: avval yopiq turadi, holat brauzerda eslab qolinadi.
+const CATEGORIES_KEY = 'subscribers.categoriesOpen'
+
+function readCategoriesOpen() {
+    try {
+        return localStorage.getItem(CATEGORIES_KEY) === '1'
+    } catch {
+        return false
+    }
+}
+
+const categoriesOpen = ref(readCategoriesOpen())
+
+function toggleCategories() {
+    categoriesOpen.value = !categoriesOpen.value
+
+    try {
+        localStorage.setItem(CATEGORIES_KEY, categoriesOpen.value ? '1' : '0')
+    } catch {
+        // Brauzer saqlashga ruxsat bermasa ham sahifa ishlayveradi.
+    }
+}
 
 const importFile = ref(null)
 const importPreview = ref([])
@@ -141,6 +164,14 @@ function getGroupLabel(group) {
     }
 
     return names.join(' → ') || '—'
+}
+
+function getParentName(group) {
+    const parent = groups.value.find(
+        item => String(item.id) === String(group?.parent_id)
+    )
+
+    return parent?.name || '—'
 }
 
 function getSubscriberPhones(subscriber) {
@@ -248,7 +279,6 @@ function openCreateGroup() {
 
     groupForm.value = {
         name: '',
-        description: '',
         enabled: true,
         parent_id: null,
     }
@@ -262,7 +292,6 @@ function openEditGroup(group) {
 
     groupForm.value = {
         name: group.name || '',
-        description: group.description || '',
         enabled: Boolean(group.enabled),
         parent_id: group.parent_id ?? null,
     }
@@ -291,7 +320,6 @@ async function saveGroup() {
     try {
         const data = {
             name,
-            description: String(groupForm.value.description || '').trim() || null,
             enabled: Boolean(groupForm.value.enabled),
             parent_id: groupForm.value.parent_id
                 ? Number(groupForm.value.parent_id)
@@ -397,11 +425,8 @@ async function handleExcelImport(event) {
                 category: String(
                     row['Kategoriya'] ?? row['kategoriya'] ?? row['Category'] ?? row['category'] ?? ''
                 ).trim(),
-                type: String(
-                    row['Turi'] ?? row['turi'] ?? row['Type'] ?? row['type'] ?? ''
-                ).trim().toLowerCase(),
             }))
-            .filter(row => row.name || row.phone || row.category || row.type)
+            .filter(row => row.name || row.phone || row.category)
 
         if (!importPreview.value.length) {
             window.alert('Excel faylda import qilinadigan qatorlar topilmadi.')
@@ -433,14 +458,13 @@ async function startImport() {
     const invalidRows = importPreview.value.filter(row =>
         !row.name ||
         !row.phone ||
-        !row.category ||
-        !['student', 'employee'].includes(row.type)
+        !row.category
     )
 
     if (invalidRows.length) {
         window.alert(
-            `${invalidRows.length} ta qatorda ma’lumot noto‘g‘ri yoki yetishmayapti. ` +
-            'Ism, Telefon, Kategoriya va Turi ustunlarini tekshiring.'
+            `${invalidRows.length} ta qatorda ma’lumot yetishmayapti. ` +
+            'Ism, Telefon va Kategoriya ustunlarini tekshiring.'
         )
         return
     }
@@ -476,7 +500,6 @@ async function startImport() {
     }
 }
 
-
 // Excel eksport: import fayli bilan bir xil ustunlar (qayta import qilsa bo'ladi)
 function exportSubscribers() {
     const list = subscribers.value || []
@@ -497,7 +520,6 @@ function exportSubscribers() {
             Ism: s.name,
             Telefon: (s.phones || []).map((p) => p.phone).join(';'),
             Kategoriya: s.group?.name || '',
-            Turi: s.type,
         }))
 
     const workbook = XLSX.utils.book_new()
@@ -540,12 +562,12 @@ function exportSubscribers() {
 </script>
 
 <template>
-    <div class="page">
+    <div class="page subscribers-page">
         <div class="page-header">
             <div>
                 <h1>Abonentlar</h1>
                 <p class="page-description">
-                    Talabalar va xodimlarni boshqarish
+                    Abonentlarni kategoriyalar bo‘yicha boshqarish
                 </p>
             </div>
 
@@ -601,13 +623,22 @@ function exportSubscribers() {
 
         <!-- Kategoriyalar -->
         <div class="card">
-            <div class="card-header-row">
-                <div>
-                    <h2>Kategoriyalar</h2>
-                    <p class="section-description">
-                        Asosiy kategoriya va uning ichki kategoriyalarini boshqaring.
-                    </p>
-                </div>
+            <div class="card-header-row" :class="{ 'card-header-row--closed': !categoriesOpen }">
+                <button class="categories-toggle" type="button" :aria-expanded="categoriesOpen"
+                    @click="toggleCategories">
+                    <ChevronDown :size="20" class="categories-chevron" :class="{ 'is-closed': !categoriesOpen }" />
+
+                    <span class="categories-toggle-text">
+                        <span class="categories-title">
+                            Kategoriyalar
+                            <span class="count-badge">{{ displayGroups.length }}</span>
+                        </span>
+
+                        <span v-if="categoriesOpen" class="section-description">
+                            Asosiy kategoriya va uning ichki kategoriyalarini boshqaring.
+                        </span>
+                    </span>
+                </button>
 
                 <button class="btn btn-secondary btn-sm" type="button" @click="openCreateGroup">
                     <FolderPlus :size="16" />
@@ -615,30 +646,27 @@ function exportSubscribers() {
                 </button>
             </div>
 
+            <div v-show="categoriesOpen">
             <div v-if="displayGroups.length" class="groups-grid">
                 <div v-for="group in displayGroups" :key="group.id" class="group-card" :class="{
                     'group-disabled': !group.enabled,
-                    'group-child': group.depth > 0
-                }" :style="{ marginLeft: `${Math.min(group.depth || 0, 5) * 12}px` }">
+                    'group-child': group.parent_id != null
+                }">
                     <div class="group-card-icon">
-                        <Users :size="22" />
+                        <Users :size="20" />
                     </div>
 
                     <div class="group-card-content">
-                        <strong>
-                            <span v-if="group.depth > 0" class="child-marker">↳ </span>
-                            {{ group.name }}
-                        </strong>
+                        <strong class="group-name" :title="getGroupLabel(group)">{{ group.name }}</strong>
 
-                        <small v-if="group.parent_id != null" class="parent-label">
-                            Yo‘li: {{ getGroupLabel(group) }}
-                        </small>
-
-                        <span>{{ group.subscribers_count || 0 }} abonent</span>
-                        <span v-if="group.children_count" class="children-count">
-                            {{ group.children_count }} ta ichki kategoriya
+                        <span class="group-meta">
+                            {{ group.subscribers_count || 0 }} abonent<template
+                                v-if="group.children_count"> · {{ group.children_count }} ichki</template>
                         </span>
-                        <small v-if="group.description">{{ group.description }}</small>
+
+                        <span v-if="group.parent_id != null" class="group-parent">
+                            ↳ {{ getParentName(group) }}
+                        </span>
                     </div>
 
                     <div class="group-card-actions">
@@ -659,6 +687,7 @@ function exportSubscribers() {
                 <button class="btn btn-primary" type="button" @click="openCreateGroup">
                     Birinchi kategoriyani yaratish
                 </button>
+            </div>
             </div>
         </div>
 
@@ -699,7 +728,6 @@ function exportSubscribers() {
                             <th>ID</th>
                             <th>Ism</th>
                             <th>Telefon</th>
-                            <th>Turi</th>
                             <th>Kategoriya</th>
                             <th>Holat</th>
                             <th>Amallar</th>
@@ -736,13 +764,6 @@ function exportSubscribers() {
 
                                 <span v-else class="subscriber-phone-empty">
                                     Raqam yo‘q
-                                </span>
-                            </td>
-
-                            <td>
-                                <span class="badge"
-                                    :class="subscriber.type === 'student' ? 'badge-blue' : 'badge-purple'">
-                                    {{ subscriber.type === 'student' ? 'Talaba' : 'Xodim' }}
                                 </span>
                             </td>
 
@@ -813,12 +834,6 @@ function exportSubscribers() {
                         </small>
                     </div>
 
-                    <div class="form-group">
-                        <label for="group-description">Tavsif</label>
-                        <textarea id="group-description" v-model="groupForm.description" class="form-control" rows="3"
-                            placeholder="Kategoriya haqida..."></textarea>
-                    </div>
-
                     <div class="form-checkbox">
                         <input id="group-enabled" v-model="groupForm.enabled" type="checkbox" />
                         <label for="group-enabled">Faol</label>
@@ -846,6 +861,8 @@ function exportSubscribers() {
                     <p>
                         {{ importPreview.length }} ta qator topildi.
                         Import qilishdan oldin ma’lumotlarni tekshiring.
+                        Ikkita raqam bo‘lsa, ularni <strong>;</strong> bilan ajrating
+                        (masalan, 991234567;971234567).
                     </p>
                 </div>
 
@@ -862,7 +879,6 @@ function exportSubscribers() {
                             <th>Ism</th>
                             <th>Telefon</th>
                             <th>Kategoriya</th>
-                            <th>Turi</th>
                         </tr>
                     </thead>
 
@@ -872,7 +888,6 @@ function exportSubscribers() {
                             <td>{{ row.name }}</td>
                             <td>{{ row.phone }}</td>
                             <td>{{ row.category }}</td>
-                            <td>{{ row.type }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -904,11 +919,6 @@ function exportSubscribers() {
                     <span>Qo‘shildi</span>
                 </div>
 
-                <div>
-                    <strong>{{ importResult.updated }}</strong>
-                    <span>Yangilandi</span>
-                </div>
-
                 <div v-if="importResult.skipped">
                     <strong>{{ importResult.skipped }}</strong>
                     <span>O‘tkazib yuborildi</span>
@@ -931,400 +941,3 @@ function exportSubscribers() {
         </div>
     </div>
 </template>
-
-<style scoped>
-.filter-row {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.search-box {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 180px;
-}
-
-.search-box .form-control {
-    width: 100%;
-}
-
-.group-filter {
-    width: 280px;
-}
-
-.card-header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 18px;
-}
-
-.card-header-row h2 {
-    margin: 0;
-}
-
-.section-description {
-    margin: 6px 0 0;
-    color: #6b7280;
-    font-size: 13px;
-}
-
-.count-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 25px;
-    height: 25px;
-    padding: 0 7px;
-    margin-left: 6px;
-    border-radius: 20px;
-    background: #eef2ff;
-    font-size: 13px;
-}
-
-.groups-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 14px;
-}
-
-.group-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    min-width: 0;
-}
-
-.group-card.group-child {
-    border-left: 3px solid #818cf8;
-}
-
-.group-card.group-disabled {
-    opacity: 0.55;
-}
-
-.group-card-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 42px;
-    height: 42px;
-    flex-shrink: 0;
-    border-radius: 9px;
-    background: #eef2ff;
-}
-
-.group-card-content {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-    min-width: 0;
-}
-
-.group-card-content strong {
-    overflow-wrap: anywhere;
-}
-
-.group-card-content span,
-.group-card-content small {
-    font-size: 12px;
-    overflow-wrap: anywhere;
-}
-
-.group-card-content span {
-    color: #6b7280;
-}
-
-.group-card-content small {
-    color: #9ca3af;
-}
-
-.child-marker {
-    color: #6366f1;
-    font-weight: 700;
-}
-
-.parent-label {
-    color: #6366f1 !important;
-}
-
-.children-count {
-    color: #4f46e5 !important;
-}
-
-.group-card-actions,
-.table-actions {
-    display: flex;
-    gap: 5px;
-    flex-shrink: 0;
-}
-
-.icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    flex-shrink: 0;
-    border: 1px solid #e5e7eb;
-    border-radius: 7px;
-    background: white;
-    cursor: pointer;
-}
-
-.icon-btn:hover {
-    background: #f3f4f6;
-}
-
-.icon-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.icon-btn.danger {
-    color: #dc2626;
-}
-
-.icon-btn.danger:hover {
-    background: #fef2f2;
-}
-
-.badge {
-    display: inline-block;
-    padding: 4px 9px;
-    border-radius: 20px;
-    font-size: 12px;
-}
-
-.badge-blue {
-    background: #dbeafe;
-    color: #1d4ed8;
-}
-
-.badge-purple {
-    background: #ede9fe;
-    color: #6d28d9;
-}
-
-.status-badge {
-    display: inline-block;
-    padding: 4px 9px;
-    border-radius: 20px;
-    font-size: 12px;
-}
-
-.status-success {
-    background: #dcfce7;
-    color: #15803d;
-}
-
-.status-disabled {
-    background: #f3f4f6;
-    color: #6b7280;
-}
-
-.subscriber-phone-list {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 7px;
-    min-width: 160px;
-}
-
-.subscriber-phone-item {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 7px;
-}
-
-.subscriber-phone-number {
-    color: #374151;
-    font-size: 13px;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-}
-
-.subscriber-phone-primary {
-    color: #111827;
-    font-weight: 700;
-}
-
-.subscriber-phone-label {
-    padding: 3px 7px;
-    border-radius: 5px;
-    background: #f3f4f6;
-    color: #6b7280;
-    font-size: 10px;
-}
-
-.subscriber-phone-disabled {
-    padding: 3px 7px;
-    border-radius: 5px;
-    background: #fee2e2;
-    color: #b91c1c;
-    font-size: 10px;
-}
-
-.subscriber-phone-empty {
-    color: #9ca3af;
-    font-size: 13px;
-}
-
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 1000;
-}
-
-.modal {
-    width: 100%;
-    max-width: 520px;
-    max-height: 90vh;
-    overflow-y: auto;
-    background: white;
-    border-radius: 12px;
-    padding: 22px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.modal-header h2 {
-    margin: 0;
-}
-
-.form-group {
-    margin-bottom: 16px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 7px;
-}
-
-.field-hint {
-    display: block;
-    margin-top: 6px;
-    color: #6b7280;
-    font-size: 12px;
-    line-height: 1.5;
-}
-
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 24px;
-}
-
-.form-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.form-checkbox input {
-    width: 16px;
-    height: 16px;
-}
-
-.form-checkbox label {
-    margin: 0;
-}
-
-.empty-state.small {
-    padding: 25px;
-}
-
-.import-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-.import-header h3,
-.import-header p {
-    margin-top: 0;
-}
-
-.import-result {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin: 18px 0;
-}
-
-.import-result>div {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 90px;
-    padding: 12px 16px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-}
-
-.import-result strong {
-    font-size: 22px;
-}
-
-.import-result span {
-    color: #6b7280;
-    font-size: 12px;
-}
-
-.import-errors {
-    color: #b91c1c;
-}
-
-.import-errors ul {
-    padding-left: 22px;
-}
-
-@media (max-width: 800px) {
-    .filter-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .group-filter {
-        width: 100%;
-    }
-
-    .groups-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .group-card.group-child {
-        margin-left: 0;
-    }
-
-    .table-wrapper {
-        overflow-x: auto;
-    }
-}
-</style>

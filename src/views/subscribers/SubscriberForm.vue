@@ -28,7 +28,6 @@ function createEmptyPhone(label = 'Asosiy', isPrimary = true) {
 const form = reactive({
     subscriber_group_id: '',
     name: '',
-    type: 'student',
     enabled: true,
     phones: [createEmptyPhone()],
 })
@@ -82,7 +81,6 @@ async function loadSubscriber() {
                 : String(subscriber.subscriber_group_id)
 
         form.name = subscriber.name ?? ''
-        form.type = subscriber.type ?? 'student'
         form.enabled = Boolean(subscriber.enabled)
 
         const phones = Array.isArray(subscriber.phones)
@@ -169,11 +167,7 @@ async function save() {
         return
     }
 
-    if (!['student', 'employee'].includes(form.type)) {
-        error.value = 'Abonent turini tanlang.'
-        return
-    }
-
+    
     const validPhones = form.phones
         .map(phone => ({
             phone: normalizePhone(phone.phone),
@@ -235,7 +229,6 @@ async function save() {
                 : null,
 
             name: form.name.trim(),
-            type: form.type,
             enabled: Boolean(form.enabled),
 
             phones: validPhones.map((phone, index) => ({
@@ -317,7 +310,7 @@ onMounted(async () => {
 
                 <div>
                     <h2>Asosiy ma’lumotlar</h2>
-                    <p>Abonentning ismi, kategoriyasi va turi</p>
+                    <p>Abonentning ismi va kategoriyasi</p>
                 </div>
             </div>
 
@@ -353,20 +346,6 @@ onMounted(async () => {
                         >
                             {{ group.name }}
                         </option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="subscriber-type">Abonent turi *</label>
-
-                    <select
-                        id="subscriber-type"
-                        v-model="form.type"
-                        class="form-control"
-                        required
-                    >
-                        <option value="student">Talaba</option>
-                        <option value="employee">Xodim</option>
                     </select>
                 </div>
             </div>

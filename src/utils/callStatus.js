@@ -44,11 +44,11 @@ export function callStatus(item) {
         case 'no_answer':
             return { label: 'Javob bermadi', cls: 'cs-badge--warn' }
 
-        case 'skipped':
-            return { label: 'Kerak bo‘lmadi', cls: 'cs-badge--muted' }
-
         case 'failed':
             return { label: 'Xatolik', cls: 'cs-badge--bad' }
+
+        case 'skipped':
+            return { label: 'Kerak bo‘lmadi', cls: 'cs-badge--muted' }
 
         default:
             return { label: item?.status || 'Noma’lum', cls: 'cs-badge--muted' }
@@ -104,7 +104,7 @@ export function formatTime(value) {
 }
 
 /**
- * Bitta abonentning raqamlarini (har biri alohida yozuv) bitta qatorga yig'adi.
+ * Bitta abonentning raqamlarini (har biri alohida yozuv) bitta guruhga yig'adi.
  * Guruhlash kaliti: kampaniya + abonent.
  */
 export function groupRecipients(items) {
@@ -137,4 +137,52 @@ export function groupRecipients(items) {
             phones: sorted.map((i) => i.phone).join(';'),
         }
     })
+}
+
+/** "AMI reason 3" kabi kodni tushunarli matnga aylantiradi. */
+export function reasonText(raw) {
+    const m = /AMI reason (\d+)/.exec(String(raw || ''))
+
+    if (!m) {
+        return String(raw || '')
+    }
+
+    switch (Number(m[1])) {
+        case 3:
+            return 'Jiringladi, lekin ko‘tarmadi'
+        case 0:
+            return 'Javob yo‘q (aniq sabab berilmagan)'
+        case 5:
+            return 'Band'
+        default:
+            return `Asterisk xato kodi: ${m[1]}`
+    }
+}
+
+/**
+ * Izoh matni. `siblings` - shu abonentning barcha raqamlari
+ * (qaysi raqam javob berganini topish uchun).
+ */
+export function callNote(item, siblings = []) {
+    const answered = siblings.find((x) => x.status === 'answered')
+
+    if (item.status === 'skipped') {
+        if (!answered) {
+            return item.error_message || 'Qo‘ng‘iroq qilinmadi'
+        }
+
+        const order = siblings.indexOf(answered) + 1
+
+        return `${order}-raqam (${answered.phone}) javob berdi`
+    }
+
+    if (item.status === 'answered') {
+        if (!item.finished_at) return 'Suhbat davom etmoqda'
+
+        return item.played
+            ? 'Javob berdi, audio to‘liq eshitildi'
+            : 'Javob berdi, audio to‘liq eshitilmadi'
+    }
+
+    return [reasonText(item.sip_reason), item.error_message].filter(Boolean).join('. ')
 }

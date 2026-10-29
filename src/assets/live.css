@@ -1,3 +1,5 @@
+
+
 /*
  * Real-time sahifalar uchun qo'shimcha uslublar.
  * Barcha nomlar "cs-" bilan boshlanadi, shuning uchun main.css bilan to'qnashmaydi.
@@ -189,3 +191,635 @@
 .cs-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 28px; }
 .cs-line + .cs-line { margin-top: 6px; }
 .cs-phone-tag { font-size: 12px; opacity: .7; }
+
+
+
+
+/* ==== Audio sahifasi (AudioList.vue) ====
+   Faqat .audio-page ichida ishlaydi. */
+   .audio-page .al-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.audio-page .al-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) minmax(220px, 320px) 40px;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    margin: 0;
+}
+
+.audio-page .al-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #eef2ff;
+    font-size: 20px;
+}
+
+.audio-page .al-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.audio-page .al-name,
+.audio-page .al-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.audio-page .al-meta {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.audio-page .al-player {
+    width: 100%;
+    height: 36px;
+}
+
+.audio-page .al-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    cursor: pointer;
+}
+
+.audio-page .al-delete:hover {
+    background: #fee2e2;
+}
+
+@media (max-width: 800px) {
+    .audio-page .al-row {
+        grid-template-columns: 44px minmax(0, 1fr) 36px;
+    }
+
+    .audio-page .al-player {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
+}
+
+
+/* ==== Abonentlar sahifasi (SubscriberList.vue) ====
+   Faqat .subscribers-page ichida ishlaydi, boshqa sahifalarga ta'sir qilmaydi. */
+   .subscribers-page .filter-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.subscribers-page .search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 180px;
+}
+
+.subscribers-page .search-box .form-control {
+    width: 100%;
+}
+
+.subscribers-page .group-filter {
+    width: 280px;
+}
+
+.subscribers-page .card-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.subscribers-page .card-header-row h2 {
+    margin: 0;
+}
+
+.subscribers-page .section-description {
+    margin: 6px 0 0;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.subscribers-page .count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 25px;
+    height: 25px;
+    padding: 0 7px;
+    margin-left: 6px;
+    border-radius: 20px;
+    background: #eef2ff;
+    font-size: 13px;
+}
+
+.subscribers-page .group-card-actions,
+.subscribers-page .table-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.subscribers-page .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 7px;
+    background: white;
+    cursor: pointer;
+}
+
+.subscribers-page .icon-btn:hover {
+    background: #f3f4f6;
+}
+
+.subscribers-page .icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.subscribers-page .icon-btn.danger {
+    color: #dc2626;
+}
+
+.subscribers-page .icon-btn.danger:hover {
+    background: #fef2f2;
+}
+
+.subscribers-page .status-badge {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 20px;
+    font-size: 12px;
+}
+
+.subscribers-page .status-success {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.subscribers-page .status-disabled {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.subscribers-page .subscriber-phone-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+    min-width: 160px;
+}
+
+.subscribers-page .subscriber-phone-item {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.subscribers-page .subscriber-phone-number {
+    color: #374151;
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.subscribers-page .subscriber-phone-primary {
+    color: #111827;
+    font-weight: 700;
+}
+
+.subscribers-page .subscriber-phone-label {
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 10px;
+}
+
+.subscribers-page .subscriber-phone-disabled {
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 10px;
+}
+
+.subscribers-page .subscriber-phone-empty {
+    color: #9ca3af;
+    font-size: 13px;
+}
+
+.subscribers-page .modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+}
+
+.subscribers-page .modal {
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: white;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+.subscribers-page .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.subscribers-page .modal-header h2 {
+    margin: 0;
+}
+
+.subscribers-page .form-group {
+    margin-bottom: 16px;
+}
+
+.subscribers-page .form-group label {
+    display: block;
+    margin-bottom: 7px;
+}
+
+.subscribers-page .field-hint {
+    display: block;
+    margin-top: 6px;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.subscribers-page .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.subscribers-page .form-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.subscribers-page .form-checkbox input {
+    width: 16px;
+    height: 16px;
+}
+
+.subscribers-page .form-checkbox label {
+    margin: 0;
+}
+
+.subscribers-page .empty-state.small {
+    padding: 25px;
+}
+
+.subscribers-page .import-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.subscribers-page .import-header h3,
+.subscribers-page .import-header p {
+    margin-top: 0;
+}
+
+.subscribers-page .import-result {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 18px 0;
+}
+
+.subscribers-page .import-result>div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 90px;
+    padding: 12px 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.subscribers-page .import-result strong {
+    font-size: 22px;
+}
+
+.subscribers-page .import-result span {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.subscribers-page .import-errors {
+    color: #b91c1c;
+}
+
+.subscribers-page .import-errors ul {
+    padding-left: 22px;
+}
+
+/* Kategoriya kartalari: hammasi bir xil o'lchamda */
+.subscribers-page .groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
+}
+
+.subscribers-page .group-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 78px;
+    padding: 12px 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    min-width: 0;
+}
+
+.subscribers-page .group-card.group-child {
+    border-left: 3px solid #818cf8;
+}
+
+.subscribers-page .group-card.group-disabled {
+    opacity: 0.55;
+}
+
+.subscribers-page .group-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    background: #eef2ff;
+}
+
+.subscribers-page .group-card-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+
+.subscribers-page .group-name,
+.subscribers-page .group-meta,
+.subscribers-page .group-parent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.subscribers-page .group-meta {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.subscribers-page .group-parent {
+    color: #6366f1;
+    font-size: 11px;
+}
+
+@media (max-width: 800px) {
+    .subscribers-page .filter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .subscribers-page .group-filter {
+        width: 100%;
+    }
+
+    .subscribers-page .table-wrapper {
+        overflow-x: auto;
+    }
+
+    .subscribers-page .groups-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Yig'iladigan "Kategoriyalar" kartasi */
+.subscribers-page .card-header-row--closed {
+    margin-bottom: 0;
+}
+
+.subscribers-page .categories-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.subscribers-page .categories-chevron {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.subscribers-page .categories-chevron.is-closed {
+    transform: rotate(-90deg);
+}
+
+.subscribers-page .categories-toggle-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.subscribers-page .categories-title {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Natijalar jadvalida bitta abonentning ikki raqami: har biri o'z qatorida */
+.cs-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 28px;
+}
+
+.cs-line + .cs-line {
+    margin-top: 6px;
+}
+
+.cs-phone-tag {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+/* ==== Campaignlar ro'yxati (CampaignList.vue) ====
+   Faqat .campaigns-page ichida ishlaydi. live.css oxiriga qo'shiladi. */
+   .campaigns-page .cl-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.campaigns-page .cl-row {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) 130px minmax(150px, 1.4fr) minmax(0, 1.5fr) 90px 84px;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px;
+}
+
+.campaigns-page .cl-head {
+    padding-top: 0;
+    padding-bottom: 0;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.campaigns-page .cl-item {
+    margin: 0;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.campaigns-page .cl-item:hover {
+    border-color: #bfdbfe;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.campaigns-page .cl-main {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.campaigns-page .cl-name {
+    overflow: hidden;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.campaigns-page .cl-sub {
+    overflow: hidden;
+    color: #6b7280;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.campaigns-page .cl-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.campaigns-page .cl-progress .cs-mini-progress {
+    margin-top: 0;
+}
+
+.campaigns-page .cl-num {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: right;
+}
+
+.campaigns-page .cl-num strong {
+    font-size: 16px;
+}
+
+.campaigns-page .cl-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.campaigns-page .cl-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #e5e7eb;
+    border-radius: 7px;
+    background: #fff;
+}
+
+.campaigns-page .cl-icon-btn:hover {
+    background: #f3f4f6;
+}
+
+.campaigns-page .cl-icon-btn.cl-danger {
+    color: #dc2626;
+}
+
+.campaigns-page .cl-icon-btn.cl-danger:hover {
+    background: #fef2f2;
+}
+
+@media (max-width: 1000px) {
+    .campaigns-page .cl-head {
+        display: none;
+    }
+
+    .campaigns-page .cl-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px 14px;
+    }
+
+    .campaigns-page .cl-progress,
+    .campaigns-page .cl-num {
+        grid-column: 1 / -1;
+        text-align: left;
+    }
+}

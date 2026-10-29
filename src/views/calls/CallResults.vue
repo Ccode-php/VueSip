@@ -1,12 +1,13 @@
 <!-- views/calls/CallResults.vue -->
 <script setup>
-import { onMounted, onUnmounted, reactive, ref, watch, computed } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import * as XLSX from 'xlsx'
 
 import campaignService from '../../services/campaignService'
 import callResultService from '../../services/callResultService'
 import {
     STATUS_FILTERS,
+    callNote,
     callStatus,
     formatDateTime,
     formatDuration,
@@ -128,19 +129,31 @@ async function exportToExcel() {
             current += 1
         } while (current <= last && all.length < 50000)
 
-        const rows = all.map((item, index) => ({
-            '#': index + 1,
-            'Kampaniya': item.campaign?.name || '',
-            'Abonent': item.name,
-            'Kategoriya': item.group_name || '',
-            'Telefon raqami': item.phone,
-            'Holat': callStatus(item).label,
-            'Urinish': `${item.attempt} / ${item.max_attempts}`,
-            'Davomiyligi (soniya)': item.duration || 0,
-            'Boshlangan': formatDateTime(item.started_at),
-            'Tugagan': formatDateTime(item.finished_at),
-            'Izoh': item.error_message || item.sip_reason || '',
-        }))
+        const rows = []
+        let number = 0
+
+        for (const g of groupRecipients(all)) {
+            g.items.forEach((item, index) => {
+                const first = index === 0
+
+                if (first) number += 1
+
+                // Abonent ma'lumoti faqat birinchi qatorda; keyingi raqam o'z qatorida
+                rows.push({
+                    '#': first ? number : '',
+                    'Kampaniya': first ? (g.campaign?.name || '') : '',
+                    'Abonent': first ? g.name : '',
+                    'Kategoriya': first ? (g.group_name || '') : '',
+                    'Raqam': item.phone,
+                    'Holat': callStatus(item).label,
+                    'Urinish': `${item.attempt} / ${item.max_attempts}`,
+                    'Davomiyligi': formatDuration(item.duration),
+                    'Boshlangan': formatDateTime(item.started_at),
+                    'Tugagan': formatDateTime(item.finished_at),
+                    'Izoh': callNote(item, g.items),
+                })
+            })
+        }
 
         const worksheet = XLSX.utils.json_to_sheet(rows)
         const workbook = XLSX.utils.book_new()
@@ -179,25 +192,42 @@ onUnmounted(() => {
                 </p>
             </div>
 
-            <button class="btn btn-primary" type="button" :disabled="exporting || !total" @click="exportToExcel">
+            <button
+                class="btn btn-primary"
+                type="button"
+                :disabled="exporting || !total"
+                @click="exportToExcel"
+            >
                 {{ exporting ? 'Tayyorlanmoqda...' : '📥 Excelga yuklash (.xlsx)' }}
             </button>
         </div>
 
         <div class="card">
             <div class="cs-toolbar">
-                <input v-model="filters.search" type="text" placeholder="Abonent ismi yoki telefon bo‘yicha qidirish..."
-                    class="form-control cs-grow" />
+                <input
+                    v-model="filters.search"
+                    type="text"
+                    placeholder="Abonent ismi yoki telefon bo‘yicha qidirish..."
+                    class="form-control cs-grow"
+                />
 
                 <select v-model="filters.campaign_id" class="form-control">
                     <option value="">Barcha kampaniyalar</option>
-                    <option v-for="campaign in campaigns" :key="campaign.id" :value="campaign.id">
+                    <option
+                        v-for="campaign in campaigns"
+                        :key="campaign.id"
+                        :value="campaign.id"
+                    >
                         {{ campaign.name }}
                     </option>
                 </select>
 
                 <select v-model="filters.status" class="form-control">
-                    <option v-for="option in STATUS_FILTERS" :key="option.value" :value="option.value">
+                    <option
+                        v-for="option in STATUS_FILTERS"
+                        :key="option.value"
+                        :value="option.value"
+                    >
                         {{ option.label }}
                     </option>
                 </select>
@@ -223,6 +253,7 @@ onUnmounted(() => {
                             <th>Urinish</th>
                             <th>Davomiylik</th>
                             <th>Vaqt</th>
+                            <th>Izoh</th>
                         </tr>
                     </thead>
 
@@ -231,10 +262,13 @@ onUnmounted(() => {
                             <td>{{ g.campaign?.name || '—' }}</td>
                             <td><strong>{{ g.name }}</strong></td>
                             <td>{{ g.group_name || '—' }}</td>
-                            <td>{{ g.phones }}</td>
                             <td>
                                 <div v-for="item in g.items" :key="item.id" class="cs-line">
-                                    <span v-if="g.items.length > 1" class="cs-phone-tag">{{ item.phone }}</span>
+                                    {{ item.phone }}
+                                </div>
+                            </td>
+                            <td>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
                                     <span class="cs-badge" :class="callStatus(item).cls">
                                         {{ callStatus(item).label }}
                                     </span>
@@ -255,6 +289,11 @@ onUnmounted(() => {
                                     {{ formatDateTime(item.started_at) }}
                                 </div>
                             </td>
+                            <td>
+                                <div v-for="item in g.items" :key="item.id" class="cs-line">
+                                    {{ callNote(item, g.items) || '—' }}
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -266,13 +305,21 @@ onUnmounted(() => {
                 </span>
 
                 <div class="cs-pager-buttons">
-                    <button type="button" class="btn btn-secondary" :disabled="page <= 1 || loading"
-                        @click="goToPage(page - 1)">
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        :disabled="page <= 1 || loading"
+                        @click="goToPage(page - 1)"
+                    >
                         ← Oldingi
                     </button>
 
-                    <button type="button" class="btn btn-secondary" :disabled="page >= lastPage || loading"
-                        @click="goToPage(page + 1)">
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        :disabled="page >= lastPage || loading"
+                        @click="goToPage(page + 1)"
+                    >
                         Keyingi →
                     </button>
                 </div>

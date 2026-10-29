@@ -70,7 +70,7 @@ onMounted(loadAudio)
 </script>
 
 <template>
-    <div class="page">
+    <div class="page audio-page">
         <div class="page-header">
             <div>
                 <h1>Audio</h1>
@@ -95,44 +95,38 @@ onMounted(loadAudio)
             Hozircha audio fayllar mavjud emas.
         </div>
 
-        <div v-else class="audio-grid">
+        <div v-else class="al-list">
             <div
                 v-for="audio in audioFiles"
                 :key="audio.id"
-                class="card audio-card"
+                class="card al-row"
             >
-                <div class="audio-info">
-                    <div class="audio-icon">🎵</div>
+                <div class="al-icon">🎵</div>
 
-                    <div>
-                        <h3>{{ audio.name }}</h3>
+                <div class="al-info">
+                    <strong class="al-name" :title="audio.name">{{ audio.name }}</strong>
 
-                        <p>{{ audio.original_name }}</p>
-
-                        <small>
-                            {{ formatSize(audio.size) }}
-                            <template v-if="audio.duration">
-                                · {{ formatDuration(audio.duration) }}
-                            </template>
-                        </small>
-                    </div>
+                    <span class="al-meta">
+                        {{ audio.original_name }}
+                        · {{ formatSize(audio.size) }}<template v-if="audio.duration"> · {{ formatDuration(audio.duration) }}</template>
+                    </span>
                 </div>
 
                 <audio
+                    class="al-player"
                     controls
                     preload="none"
                     :src="audioService.streamUrl(audio.id)"
                 ></audio>
 
-                <div class="actions">
-                    <button
-                        class="btn btn-danger"
-                        type="button"
-                        @click="deleteAudio(audio)"
-                    >
-                        🗑️ O‘chirish
-                    </button>
-                </div>
+                <button
+                    class="al-delete"
+                    type="button"
+                    title="O‘chirish"
+                    @click="deleteAudio(audio)"
+                >
+                    🗑️
+                </button>
             </div>
         </div>
     </div>
