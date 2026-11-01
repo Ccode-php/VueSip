@@ -6,6 +6,7 @@ import campaignService from '../../services/campaignService'
 import { getEcho, wsState } from '../../services/echo'
 import {
     STATUS_FILTERS,
+    callNote,
     callStatus,
     formatDateTime,
     formatDuration,
@@ -741,7 +742,7 @@ onUnmounted(() => {
 
                                 <td class="cs-message">
                                     <div v-for="item in g.items" :key="item.id" class="cs-line">
-                                        {{ item.error_message || item.sip_reason || '—' }}
+                                        {{ callNote(item, g.items) || '—' }}
                                     </div>
                                 </td>
                             </tr>

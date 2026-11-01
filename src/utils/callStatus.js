@@ -148,8 +148,7 @@ export function reasonText(raw) {
     }
 
     const m = /AMI reason (\d+)/.exec(String(raw || ''))
-    // ... qolgani o'zgarishsiz
-
+    
     if (!m) {
         return String(raw || '')
     }
