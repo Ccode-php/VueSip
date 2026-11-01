@@ -141,7 +141,14 @@ export function groupRecipients(items) {
 
 /** "AMI reason 3" kabi kodni tushunarli matnga aylantiradi. */
 export function reasonText(raw) {
+    // Yangi format: "cause 17 (User busy) / AMI reason 5".
+    // Aniq sabab matni error_message da keladi, shuning uchun bu yerda takrorlanmaydi.
+    if (/cause \d+/.test(String(raw || ''))) {
+        return ''
+    }
+
     const m = /AMI reason (\d+)/.exec(String(raw || ''))
+    // ... qolgani o'zgarishsiz
 
     if (!m) {
         return String(raw || '')
